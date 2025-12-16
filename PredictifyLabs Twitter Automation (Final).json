@@ -1,0 +1,316 @@
+{
+  "name": "PredictifyLabs Twitter Automation (Final)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "event",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "8868b934-f066-47fc-8fd1-a03aecf03381",
+      "name": "Webhook",
+      "webhookId": "040f8da3-6adc-4a2a-9387-f8295f8d3208"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e9d5f6e6-9763-4cb5-a7d2-13c79e4da3ab",
+              "name": "body.title",
+              "value": "={{ $json.body.title }}",
+              "type": "string"
+            },
+            {
+              "id": "6b04d3ac-54a2-4a67-ae69-6e7c81a1f8ad",
+              "name": "body.description",
+              "value": "={{ $json.body.description }}",
+              "type": "string"
+            },
+            {
+              "id": "e82925b5-ee8f-4242-958c-b336c77d97ca",
+              "name": "body.location",
+              "value": "={{ $json.body.location }}",
+              "type": "string"
+            },
+            {
+              "id": "161774ce-5280-49bd-9143-e161e7b25302",
+              "name": "body.venueDetails.address",
+              "value": "={{ $json.body.venueDetails.address }}",
+              "type": "string"
+            },
+            {
+              "id": "f5e680fd-3a17-4a08-a1fa-806d777b6663",
+              "name": "body.startAt",
+              "value": "={{ $json.body.startAt }}",
+              "type": "string"
+            },
+            {
+              "id": "6fe50fd9-4817-4175-b83f-1cbd3d8f303b",
+              "name": "body.coverImageUrl",
+              "value": "={{ $json.body.coverImageUrl }}",
+              "type": "string"
+            },
+            {
+              "id": "e9400062-46aa-4abf-b98f-94cb1d21482c",
+              "name": "body.tags[0]",
+              "value": "={{ $json.body.tags[3] }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        224,
+        0
+      ],
+      "id": "75807b46-c117-4b9d-a53c-c70dd15c1340",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Eres un Community Manager experto. Tu única tarea es generar un tweet siguiendo ESTRICTAMENTE esta plantilla visual. Debes resumir la información para que quepa en menos de 280 caracteres.\n\nPLANTILLA OBLIGATORIA:\n🚀 {{ $json.body.title }} | {{ $json.body.location }}\n[Frase corta y potente resumiendo la descripción]\n📅 [Fecha corta: DD Mes] • [Hora: HH:MM AM/PM]\n📍 {{ $json.body.venueDetails.address }}\nInfo aquí 👇\n[Link]\n#{{ $json.body.tags[0] }} #Tech\n\nDATOS DE ENTRADA:\n- Descripción original: {{ $json.body.description }}\n- Fecha original: {{ $json.body.startAt }}\n\nREGLAS:\n1. La \"Frase corta\" debe tener máximo 100 caracteres. Vende el beneficio, no describas todo.\n2. La fecha DEBE ser corta (ej: 15 Dic • 09:00 AM). No pongas el año si no es vital.\n3. El output final NO debe superar los 270 caracteres (dejando margen para el link).\n4. Si no tienes un link real, escribe explícitamente \"[Link]\" como placeholder.\n\nOUTPUT SOLO EL TEXTO DEL TWEET.",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        448,
+        0
+      ],
+      "id": "bba34039-4e76-4c90-bbdb-de429ca921ed",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.5-pro",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        304,
+        224
+      ],
+      "id": "a2c273fc-0dcd-4d73-9513-15b4f6c7bbbf",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "tcOKbfIAJVkfRq5X",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "test_session"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        496,
+        224
+      ],
+      "id": "fc4dab8f-3f0f-4105-9b5e-686aaac53b3c",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "jsCode": "const aiOutput = $input.first().json.output || \"\";\n\n// Limpieza y Seguridad\nlet cleanText = aiOutput\n  .replace(/\\\\n/g, '\\n')      // Saltos de linea reales\n  .replace(/\\*\\*/g, '')       // Sin negritas MD\n  .replace(/^\"|\"$/g, '')      // Sin comillas extra\n  .trim();\n\n// Límite Twitter\nconst MAX = 280;\n\nif (cleanText.length > MAX) {\n  // Estrategia de emergencia: si la IA falló en contar caracteres,\n  // cortamos la \"frase corta\" (línea 2) con elipsis para salvar la estructura.\n  \n  // Separar por líneas\n  let lines = cleanText.split('\\n');\n  \n  // Si tiene la estructura esperada (> 4 líneas)\n  if (lines.length >= 4) {\n     // Intentamos recortar la línea de descripción (índice 1 usualmente)\n     // Recalculamos longitud total quitando esa línea\n     let currentLengthWithoutDesc = cleanText.length - lines[1].length;\n     let availableSpace = MAX - currentLengthWithoutDesc - 3; // -3 para \"...\"\n     \n     if (availableSpace > 10) {\n        lines[1] = lines[1].substring(0, availableSpace) + \"...\";\n        cleanText = lines.join('\\n');\n     }\n  }\n  \n  // Si AÚN así falla (o la estructura no era estándar), corte duro al final.\n  if (cleanText.length > MAX) {\n      cleanText = cleanText.substring(0, MAX - 3) + \"...\";\n  }\n}\n\nreturn {\n  json: {\n    text: cleanText,\n    original_length: aiOutput.length,\n    final_length: cleanText.length\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        752,
+        0
+      ],
+      "id": "dd0090e4-c387-4bf7-bfc0-553377c6a34a",
+      "name": "Format & Safety Logic"
+    },
+    {
+      "parameters": {
+        "text": "={{ $json.text }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.twitter",
+      "typeVersion": 2,
+      "position": [
+        912,
+        0
+      ],
+      "id": "44d62eb8-87c3-44d1-bdb1-3adf1ea4bf0d",
+      "name": "Create Tweet",
+      "credentials": {
+        "twitterOAuth2Api": {
+          "id": "UFZwAiWopVF6v86n",
+          "name": "X account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## 1st step\nTake a http request from the backend, in this case when a event is created.",
+        "width": 150
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -32,
+        -176
+      ],
+      "typeVersion": 1,
+      "id": "2c22708e-c357-403f-84ac-4f3444bc6683",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## 2nd step\nReceived the JSON from the POST http response from the backend, extract punctual information to send it to the agent.",
+        "width": 224,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        160,
+        -176
+      ],
+      "typeVersion": 1,
+      "id": "df473f1d-7b0a-4346-996b-d638b0742ac0",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "## 3rd step\nThe agent's function is create a brieve and eye-catching description to post a tweet on X, to make more visible the new event.",
+        "width": 224,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        448,
+        -176
+      ],
+      "typeVersion": 1,
+      "id": "d7d7ae67-37dc-47c9-ba64-4dc898e4d3d3",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "## 4th step\nFormat the output of the agent's response to a kind of file the X node supports.",
+        "width": 160,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        720,
+        -176
+      ],
+      "typeVersion": 1,
+      "id": "c4c08a85-7297-4148-b9c7-61b6d2287e22",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "## 5th step\nThe tweet is finally posted on the PredictifyLabs X account.",
+        "width": 160,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        912,
+        -176
+      ],
+      "typeVersion": 1,
+      "id": "3074e884-750d-4ff8-947b-7e8c0f59884f",
+      "name": "Sticky Note4"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Format & Safety Logic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format & Safety Logic": {
+      "main": [
+        [
+          {
+            "node": "Create Tweet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "297fe9bd-a713-4476-8ee6-0828eb913fe0",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "501e71b2757b53f07454a6d48bc818917ba556d08f8803c329a79b58c0b18029"
+  },
+  "id": "Mrxj9u3tth3wbgQe",
+  "tags": []
+}
